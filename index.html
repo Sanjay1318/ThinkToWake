@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ThinkToWake</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Navigation Tabs -->
+  <nav class="nav-tabs">
+    <button class="nav-tab active" data-screen="alarm">⏰ Alarm</button>
+    <button class="nav-tab" data-screen="stopwatch">⏱️ Stopwatch</button>
+    <button class="nav-tab" data-screen="timer">⏳ Timer</button>
+    <button class="nav-tab" data-screen="mathSprint">🧮 Math Sprint</button>
+    <button class="nav-tab" data-screen="dashboard">📊 Dashboard</button>
+  </nav>
+
+  <!-- Alarm Main Screen (Wrapper) -->
+  <div id="alarmMainScreen">
+    <!-- Alarm Setup Screen -->
+    <div class="container" id="setupScreen">
+      <h1>⏰ ThinkToWake</h1>
+      <p class="tagline">Solve to silence the alarm</p>
+
+      <!-- Difficulty Selector -->
+      <div class="difficulty-selector">
+        <label>Difficulty:</label>
+        <div class="difficulty-buttons">
+          <button class="diff-btn" data-difficulty="easy">Easy</button>
+          <button class="diff-btn active" data-difficulty="medium">Medium</button>
+          <button class="diff-btn" data-difficulty="hard">Hard</button>
+        </div>
+      </div>
+
+      <label for="alarmTime">Set Alarm Time</label>
+      <input type="time" id="alarmTime">
+
+      <button id="setAlarmBtn">Set Alarm</button>
+      <button id="cancelAlarmBtn" class="secondary hidden">Cancel Alarm</button>
+
+      <p id="statusText"></p>
+    </div>
+
+    <!-- Alarm Ringing Screen -->
+    <div class="container hidden" id="alarmScreen">
+      <h2>Wake Up!</h2>
+
+      <!-- Progress Indicator -->
+      <div class="progress-indicator" id="progressIndicator">
+        <div class="progress-dot" data-index="0"></div>
+        <div class="progress-dot" data-index="1"></div>
+        <div class="progress-dot" data-index="2"></div>
+        <div class="progress-dot" data-index="3"></div>
+        <div class="progress-dot" data-index="4"></div>
+      </div>
+
+      <div id="questionBox">
+        <!-- Question will be injected here -->
+        <div id="categoryBadge"></div>
+        <p class="question-text" id="questionText"></p>
+      </div>
+
+      <div id="optionsBox"></div>
+      <p id="feedbackText"></p>
+    </div>
+
+    <!-- Alarm Completed Screen -->
+    <div class="container hidden" id="alarmCompletedScreen">
+      <h2>🎉 Great Job!</h2>
+      <p class="tagline">You solved the alarm!</p>
+
+      <div class="completion-stats">
+        <div class="stat-box">
+          <span class="stat-label">Time</span>
+          <span class="stat-value" id="solveTime">0s</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Attempts</span>
+          <span class="stat-value" id="totalAttempts">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Accuracy</span>
+          <span class="stat-value" id="accuracy">0%</span>
+        </div>
+      </div>
+
+      <button id="startFocusBtn">Start 5-min Focus Session</button>
+      <button id="dismissCompletionBtn" class="secondary">Dismiss</button>
+    </div>
+  </div>
+
+  <!-- Stopwatch Screen -->
+  <div class="container hidden" id="stopwatchScreen">
+    <h1>⏱️ Stopwatch</h1>
+    <p class="tagline">Track your time</p>
+
+    <div class="stopwatch-display" id="stopwatchDisplay">00:00:00.00</div>
+
+    <div class="stopwatch-controls">
+      <button id="startStopBtn">Start</button>
+      <button id="lapBtn" class="secondary">Lap</button>
+      <button id="resetBtn" class="secondary">Reset</button>
+    </div>
+
+    <div class="lap-times" id="lapTimes">
+      <!-- Lap times will appear here -->
+    </div>
+  </div>
+
+  <!-- Timer Screen -->
+  <div class="container hidden" id="timerScreen">
+    <h1>⏳ Timer</h1>
+    <p class="tagline">Set a countdown</p>
+
+    <div class="timer-inputs">
+      <div class="timer-input-group">
+        <input type="number" id="hoursInput" min="0" max="23" value="0" placeholder="HH">
+        <label>Hours</label>
+      </div>
+      <div class="timer-input-group">
+        <input type="number" id="minutesInput" min="0" max="59" value="5" placeholder="MM">
+        <label>Minutes</label>
+      </div>
+      <div class="timer-input-group">
+        <input type="number" id="secondsInput" min="0" max="59" value="0" placeholder="SS">
+        <label>Seconds</label>
+      </div>
+    </div>
+
+    <div class="timer-display" id="timerDisplay">00:00:00</div>
+
+    <div class="timer-controls">
+      <button id="startTimerBtn">Start</button>
+      <button id="pauseTimerBtn" class="secondary hidden">Pause</button>
+      <button id="cancelTimerBtn" class="secondary">Cancel</button>
+    </div>
+
+    <div class="timer-presets">
+      <button class="preset-btn" data-minutes="1">1 min</button>
+      <button class="preset-btn" data-minutes="5">5 min</button>
+      <button class="preset-btn" data-minutes="10">10 min</button>
+      <button class="preset-btn" data-minutes="15">15 min</button>
+    </div>
+  </div>
+
+  <!-- Math Sprint Screen -->
+  <div class="container hidden" id="mathSprintScreen">
+    <h1>🧮 Math Sprint</h1>
+    <p class="tagline">Speed math challenge - 60 seconds!</p>
+
+    <div class="math-sprint-stats">
+      <div class="stat-box">
+        <span class="stat-label">Time</span>
+        <span class="stat-value" id="sprintTime">60</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Score</span>
+        <span class="stat-value" id="sprintScore">0</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Best</span>
+        <span class="stat-value" id="sprintBest">0</span>
+      </div>
+    </div>
+
+    <div class="math-sprint-game" id="mathSprintGame">
+      <div class="math-problem" id="mathProblem">
+        <span id="mathNum1">0</span>
+        <span id="mathOperator">+</span>
+        <span id="mathNum2">0</span>
+        <span>=</span>
+        <span>?</span>
+      </div>
+
+      <div class="math-input-container">
+        <input type="number" id="mathAnswer" placeholder="?" autocomplete="off">
+        <button id="submitAnswerBtn">Submit</button>
+      </div>
+
+      <p id="mathFeedback"></p>
+    </div>
+
+    <div class="math-sprint-start" id="mathSprintStart">
+      <button id="startSprintBtn">Start Game</button>
+    </div>
+
+    <div class="math-sprint-over hidden" id="mathSprintOver">
+      <h2>Game Over!</h2>
+      <p class="final-score">Your Score: <span id="finalScore">0</span></p>
+      <p id="newHighScore" class="hidden">🏆 New High Score!</p>
+      <button id="playAgainBtn">Play Again</button>
+    </div>
+  </div>
+
+  <!-- Dashboard Screen -->
+  <div class="container hidden" id="dashboardScreen">
+    <h1>📊 Dashboard</h1>
+    <p class="tagline">Your weekly performance</p>
+
+    <!-- Streak Card -->
+    <div class="dashboard-card streak-card">
+      <div class="streak-icon">🔥</div>
+      <div class="streak-info">
+        <span class="streak-count" id="currentStreak">0</span>
+        <span class="streak-label">Day Streak</span>
+      </div>
+    </div>
+
+    <!-- Weekly Stats Grid -->
+    <div class="dashboard-stats">
+      <div class="dash-stat-box">
+        <span class="dash-stat-icon">⏰</span>
+        <span class="dash-stat-value" id="totalAlarms">0</span>
+        <span class="dash-stat-label">Alarms This Week</span>
+      </div>
+      <div class="dash-stat-box">
+        <span class="dash-stat-icon">⚡</span>
+        <span class="dash-stat-value" id="avgSolveTime">0s</span>
+        <span class="dash-stat-label">Avg Solve Time</span>
+      </div>
+      <div class="dash-stat-box">
+        <span class="dash-stat-icon">🎯</span>
+        <span class="dash-stat-value" id="avgAccuracy">0%</span>
+        <span class="dash-stat-label">Avg Accuracy</span>
+      </div>
+      <div class="dash-stat-box">
+        <span class="dash-stat-icon">🧮</span>
+        <span class="dash-stat-value" id="mathSprintBest">0</span>
+        <span class="dash-stat-label">Math Sprint Best</span>
+      </div>
+    </div>
+
+    <!-- History List -->
+    <div class="history-section">
+      <h3>Recent Activity</h3>
+      <div class="history-list" id="historyList">
+        <p class="no-history">No alarms solved yet. Start your streak!</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Persistent Alarm Banner -->
+  <div id="alarmBanner" class="alarm-banner hidden">
+    <span class="alarm-banner-icon">⏰</span>
+    <span class="alarm-banner-text">Your alarm is ringing! Tap to solve it.</span>
+    <button class="alarm-banner-btn" onclick="goToAlarmScreen()">Solve Now</button>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Alarm Sound -->
+  <audio id="alarmSound" loop>
+    <source src="assets/alarm.mp3" type="audio/mpeg">
+    Your browser does not support audio.
+  </audio>
+
+  <script src="questions.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
