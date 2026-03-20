@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ThinkToWake</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Brain-training alarm clock — solve puzzles to silence the alarm">
+  <meta name="theme-color" content="#6aab7e">
+
+  <!-- PWA manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- iOS PWA support -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ThinkToWake">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Navigation Tabs -->
+  <nav class="nav-tabs">
+    <button class="nav-tab active" data-screen="alarm">⏰</button>
+    <button class="nav-tab" data-screen="stopwatch">⏱️</button>
+    <button class="nav-tab" data-screen="timer">⏳</button>
+    <button class="nav-tab" data-screen="mathSprint">🧮</button>
+    <button class="nav-tab" data-screen="dashboard">📊</button>
+    <button class="nav-tab" data-screen="settings">⚙️</button>
+  </nav>
+
+  <!-- ===================== ALARM MAIN SCREEN ===================== -->
+  <div id="alarmMainScreen">
+    <!-- 1. Alarm List -->
+    <div class="container" id="alarmListScreen">
+      <div class="alarm-list-header">
+        <div>
+          <h1>⏰ ThinkToWake</h1>
+          <p class="tagline">Solve to silence the alarm</p>
+        </div>
+        <button class="add-alarm-btn" id="addAlarmBtn">+ Add</button>
+      </div>
+      <div class="difficulty-selector">
+        <label>Difficulty:</label>
+        <div class="difficulty-buttons">
+          <button class="diff-btn" data-difficulty="easy">Easy</button>
+          <button class="diff-btn active" data-difficulty="medium">Medium</button>
+          <button class="diff-btn" data-difficulty="hard">Hard</button>
+        </div>
+      </div>
+      <div id="alarmList"></div>
+      <div id="noAlarmsMsg" class="no-alarms-msg hidden">
+        <span>🔕</span>
+        <p>No alarms yet.</p>
+        <p>Tap <strong>+ Add</strong> to create one.</p>
+      </div>
+    </div>
+
+    <!-- 2. Add / Edit Alarm Form -->
+    <div class="container hidden" id="alarmFormScreen">
+      <div class="form-header">
+        <button class="back-btn" id="backToListBtn">← Back</button>
+        <h2 id="formTitle">New Alarm</h2>
+      </div>
+      <label for="alarmName">Alarm Name</label>
+      <input type="text" id="alarmName" placeholder="e.g. Morning Run" maxlength="40">
+      <label for="alarmTimeInput">Alarm Time</label>
+      <input type="time" id="alarmTimeInput">
+      <label for="repeatOption">Repeat</label>
+      <select id="repeatOption" class="styled-select">
+        <option value="once">Once</option>
+        <option value="everyday">Everyday</option>
+        <option value="custom">Custom Days</option>
+      </select>
+      <div id="customDaysSection" class="hidden">
+        <label>Select Days</label>
+        <div class="day-selector">
+          <button class="day-btn" data-day="mon">Mon</button>
+          <button class="day-btn" data-day="tue">Tue</button>
+          <button class="day-btn" data-day="wed">Wed</button>
+          <button class="day-btn" data-day="thu">Thu</button>
+          <button class="day-btn" data-day="fri">Fri</button>
+          <button class="day-btn" data-day="sat">Sat</button>
+          <button class="day-btn" data-day="sun">Sun</button>
+        </div>
+      </div>
+      <label for="alarmReminder">Reminder (optional)</label>
+      <textarea id="alarmReminder" class="styled-textarea" placeholder="e.g. Drink water, take vitamins..." maxlength="200"></textarea>
+      <label for="alarmSoundSelect">Alarm Sound</label>
+      <select id="alarmSoundSelect" class="styled-select">
+        <option value="assets/alarm.mp3">Classic</option>
+        <option value="assets/sounds/digital.mp3">Digital</option>
+        <option value="assets/sounds/bell.mp3">Bell</option>
+        <option value="custom">Upload Custom...</option>
+      </select>
+      <div id="customSoundSection" class="hidden">
+        <label for="customSoundFile">Upload Ringtone (MP3/OGG)</label>
+        <input type="file" id="customSoundFile" accept="audio/*" class="file-input">
+        <p id="customSoundName" class="file-name-label"></p>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">📳 Vibrate on alarm</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="vibrateToggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <button id="saveAlarmBtn">Save Alarm</button>
+    </div>
+
+    <!-- 3. Alarm Ringing Screen -->
+    <div class="container hidden" id="alarmScreen">
+      <div class="alarm-ringing-header">
+        <h2 id="ringingAlarmName">Wake Up!</h2>
+        <p class="ringing-time" id="ringingAlarmTime"></p>
+      </div>
+      <div class="progress-indicator" id="progressIndicator">
+        <div class="progress-dot" data-index="0"></div>
+        <div class="progress-dot" data-index="1"></div>
+        <div class="progress-dot" data-index="2"></div>
+        <div class="progress-dot" data-index="3"></div>
+        <div class="progress-dot" data-index="4"></div>
+      </div>
+      <div id="questionBox">
+        <div id="categoryBadge"></div>
+        <p class="question-text" id="questionText"></p>
+      </div>
+      <div id="optionsBox"></div>
+      <p id="feedbackText"></p>
+    </div>
+
+    <!-- 4. Alarm Completed Screen -->
+    <div class="container hidden" id="alarmCompletedScreen">
+      <div class="completion-header">
+        <div class="completion-emoji">🌅</div>
+        <h2>Great Job!</h2>
+        <p class="tagline">You're officially awake</p>
+      </div>
+      <div id="reminderBox" class="reminder-box hidden">
+        <span class="reminder-icon">📝</span>
+        <p id="reminderText"></p>
+      </div>
+      <div class="completion-stats">
+        <div class="stat-box">
+          <span class="stat-label">Time</span>
+          <span class="stat-value" id="solveTime">0s</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Attempts</span>
+          <span class="stat-value" id="totalAttempts">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Accuracy</span>
+          <span class="stat-value" id="accuracy">0%</span>
+        </div>
+      </div>
+      <button id="startFocusBtn">⏳ Start 5-min Focus Timer</button>
+      <button id="dismissCompletionBtn" class="secondary">Dismiss</button>
+    </div>
+  </div>
+
+  <!-- ===================== STOPWATCH SCREEN ===================== -->
+  <div class="container hidden" id="stopwatchScreen">
+    <div class="screen-header">
+      <h1>⏱️ Stopwatch</h1>
+    </div>
+    <div class="stopwatch-display" id="stopwatchDisplay">
+      <span class="sw-hm" id="swHM">00:00</span><span class="sw-sep">.</span><span class="sw-cs" id="swCS">00</span>
+    </div>
+    <div class="stopwatch-controls">
+      <button id="resetBtn" class="icon-btn secondary">↺</button>
+      <button id="startStopBtn" class="main-action-btn">Start</button>
+      <button id="lapBtn" class="icon-btn secondary">Lap</button>
+    </div>
+    <div class="lap-list" id="lapTimes">
+      <p class="lap-empty">Press Lap while running to record splits</p>
+    </div>
+  </div>
+
+  <!-- ===================== TIMER SCREEN ===================== -->
+  <div class="container hidden" id="timerScreen">
+    <div class="screen-header">
+      <h1>⏳ Timer</h1>
+    </div>
+
+    <!-- Ring + display -->
+    <div class="timer-ring-container">
+      <svg class="timer-ring" viewBox="0 0 200 200">
+        <circle class="timer-ring-bg" cx="100" cy="100" r="88"/>
+        <circle class="timer-ring-fill" id="timerRingFill" cx="100" cy="100" r="88"/>
+      </svg>
+      <div class="timer-ring-inner">
+        <div class="timer-display" id="timerDisplay">00:00</div>
+        <div class="timer-display-label" id="timerDisplayLabel">tap to set</div>
+      </div>
+    </div>
+
+    <!-- Drum-roll style picker (shown when not running) -->
+    <div class="timer-picker" id="timerPicker">
+      <div class="timer-inputs">
+        <div class="timer-input-group">
+          <input type="number" id="hoursInput" min="0" max="23" value="0" placeholder="0">
+          <label>h</label>
+        </div>
+        <span class="timer-colon">:</span>
+        <div class="timer-input-group">
+          <input type="number" id="minutesInput" min="0" max="59" value="5" placeholder="0">
+          <label>m</label>
+        </div>
+        <span class="timer-colon">:</span>
+        <div class="timer-input-group">
+          <input type="number" id="secondsInput" min="0" max="59" value="0" placeholder="0">
+          <label>s</label>
+        </div>
+      </div>
+      <div class="timer-presets">
+        <button class="preset-btn" data-minutes="1">1m</button>
+        <button class="preset-btn" data-minutes="5">5m</button>
+        <button class="preset-btn" data-minutes="10">10m</button>
+        <button class="preset-btn" data-minutes="15">15m</button>
+        <button class="preset-btn" data-minutes="25">25m</button>
+        <button class="preset-btn" data-minutes="30">30m</button>
+      </div>
+    </div>
+
+    <div class="timer-controls">
+      <button id="cancelTimerBtn" class="icon-btn secondary">✕</button>
+      <button id="startTimerBtn" class="main-action-btn">Start</button>
+      <button id="pauseTimerBtn" class="icon-btn secondary hidden">⏸</button>
+    </div>
+  </div>
+
+  <!-- ===================== MATH SPRINT SCREEN ===================== -->
+  <div class="container hidden" id="mathSprintScreen">
+    <div class="screen-header">
+      <h1>🧮 Math Sprint</h1>
+      <p class="tagline">60 seconds. No mercy.</p>
+    </div>
+
+    <!-- Always-visible stats bar -->
+    <div class="sprint-stat-bar">
+      <div class="sprint-stat">
+        <span class="sprint-stat-val" id="sprintTime">60</span>
+        <span class="sprint-stat-lbl">sec</span>
+      </div>
+      <div class="sprint-stat sprint-stat--score">
+        <span class="sprint-stat-val" id="sprintScore">0</span>
+        <span class="sprint-stat-lbl">score</span>
+      </div>
+      <div class="sprint-stat">
+        <span class="sprint-stat-val" id="sprintBest">0</span>
+        <span class="sprint-stat-lbl">best</span>
+      </div>
+    </div>
+
+    <!-- Start state -->
+    <div id="mathSprintStart" class="sprint-start-state">
+      <div class="sprint-start-icon">🧮</div>
+      <p class="sprint-start-desc">Answer as many math problems as you can in 60 seconds. Problems get harder as your score grows.</p>
+      <button id="startSprintBtn" class="main-action-btn sprint-start-btn">Start Game</button>
+    </div>
+
+    <!-- Game state -->
+    <div class="math-sprint-game hidden" id="mathSprintGame">
+      <div class="math-problem">
+        <span id="mathNum1">0</span>
+        <span class="math-op" id="mathOperator">+</span>
+        <span id="mathNum2">0</span>
+        <span class="math-eq">=</span>
+        <span class="math-q">?</span>
+      </div>
+      <div class="math-input-container">
+        <input type="number" id="mathAnswer" placeholder="Answer" autocomplete="off" inputmode="numeric">
+        <button id="submitAnswerBtn">→</button>
+      </div>
+      <p id="mathFeedback" class="math-feedback"></p>
+    </div>
+
+    <!-- Game over state -->
+    <div class="math-sprint-over hidden" id="mathSprintOver">
+      <div class="sprint-over-card">
+        <p class="sprint-over-label">Final Score</p>
+        <p class="sprint-over-score" id="finalScore">0</p>
+        <p id="newHighScore" class="sprint-new-best hidden">🏆 New Best!</p>
+      </div>
+      <button id="playAgainBtn" class="main-action-btn">Play Again</button>
+    </div>
+  </div>
+
+  <!-- ===================== DASHBOARD SCREEN ===================== -->
+  <div class="container hidden" id="dashboardScreen">
+    <div class="screen-header">
+      <h1>📊 Dashboard</h1>
+    </div>
+    <div class="dashboard-card streak-card">
+      <div class="streak-icon">🔥</div>
+      <div class="streak-info">
+        <span class="streak-count" id="currentStreak">0</span>
+        <span class="streak-label">Day Streak</span>
+      </div>
+      <div class="streak-message" id="streakMessage">Keep it up!</div>
+    </div>
+    <div class="dashboard-stats">
+      <div class="dash-stat-box">
+        <span class="dash-stat-icon">⏰</span>
+        <span class="dash-stat-value" id="totalAlarms">0</span>
+        <span class="dash-stat-label">This Week</span>
+      </div>
+      <div class="dash-stat-box">
+        <span class="dash-stat-icon">⚡</span>
+        <span class="dash-stat-value" id="avgSolveTime">0s</span>
+        <span class="dash-stat-label">Avg Solve</span>
+      </div>
+      <div class="dash-stat-box">
+        <span class="dash-stat-icon">🎯</span>
+        <span class="dash-stat-value" id="avgAccuracy">0%</span>
+        <span class="dash-stat-label">Accuracy</span>
+      </div>
+      <div class="dash-stat-box">
+        <span class="dash-stat-icon">🧮</span>
+        <span class="dash-stat-value" id="mathSprintBest">0</span>
+        <span class="dash-stat-label">Sprint Best</span>
+      </div>
+    </div>
+    <!-- 7-day chart -->
+    <div class="week-chart-section">
+      <h3>Last 7 Days</h3>
+      <div class="week-chart" id="weekChart"></div>
+      <div class="week-chart-labels" id="weekChartLabels"></div>
+    </div>
+    <div class="history-section">
+      <h3>Recent Activity</h3>
+      <div class="history-list" id="historyList">
+        <p class="no-history">No alarms solved yet. Start your streak!</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== SETTINGS SCREEN ===================== -->
+  <div class="container hidden" id="settingsScreen">
+    <div class="screen-header">
+      <h1>⚙️ Settings</h1>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-title">🔔 Alarm</div>
+
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <span class="settings-row-label">Default Sound</span>
+          <span class="settings-row-sub" id="defaultSoundName">Classic</span>
+        </div>
+        <select id="settingsSoundSelect" class="styled-select settings-select">
+          <option value="assets/alarm.mp3">Classic</option>
+          <option value="assets/sounds/digital.mp3">Digital</option>
+          <option value="assets/sounds/bell.mp3">Bell</option>
+          <option value="custom">Upload Custom...</option>
+        </select>
+      </div>
+
+      <div id="settingsCustomSoundSection" class="hidden settings-custom-upload">
+        <input type="file" id="settingsCustomSoundFile" accept="audio/*" class="file-input">
+        <p id="settingsCustomSoundName" class="file-name-label"></p>
+      </div>
+
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <span class="settings-row-label">Vibrate by default</span>
+          <span class="settings-row-sub">New alarms will vibrate</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="settingsVibrateDefault" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <span class="settings-row-label">Default Difficulty</span>
+          <span class="settings-row-sub">Used for all new alarms</span>
+        </div>
+        <select id="settingsDifficultySelect" class="styled-select settings-select">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-title">⏱️ Timer</div>
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <span class="settings-row-label">Timer sound</span>
+          <span class="settings-row-sub">Sound when timer ends</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="settingsTimerSound" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-title">🎨 Appearance</div>
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <span class="settings-row-label">Theme</span>
+          <span class="settings-row-sub">Choose your vibe</span>
+        </div>
+        <div class="theme-picker">
+          <button class="theme-btn active" data-theme="forest" title="Forest">🌲</button>
+          <button class="theme-btn" data-theme="ocean" title="Ocean">🌊</button>
+          <button class="theme-btn" data-theme="dusk" title="Dusk">🌇</button>
+          <button class="theme-btn" data-theme="midnight" title="Midnight">🌙</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-title">🗂️ Data</div>
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <span class="settings-row-label">Clear history</span>
+          <span class="settings-row-sub">Remove all alarm records</span>
+        </div>
+        <button class="settings-danger-btn" id="clearHistoryBtn">Clear</button>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <span class="settings-row-label">Reset streak</span>
+          <span class="settings-row-sub">Start your streak over</span>
+        </div>
+        <button class="settings-danger-btn" id="resetStreakBtn">Reset</button>
+      </div>
+    </div>
+
+    <p class="settings-version">ThinkToWake v2.0 · All data stored locally</p>
+  </div>
+
+  <!-- Persistent Alarm Banner -->
+  <div id="alarmBanner" class="alarm-banner hidden">
+    <span class="alarm-banner-icon">⏰</span>
+    <span class="alarm-banner-text">Alarm ringing — tap to solve!</span>
+    <button class="alarm-banner-btn" onclick="goToAlarmScreen()">Solve</button>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Audio: alarm loops, timer plays once -->
+  <audio id="alarmSound" loop></audio>
+  <audio id="timerSound"></audio>
+
+  <script src="questions.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
