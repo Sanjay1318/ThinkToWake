@@ -1,12 +1,12 @@
 {
   "name": "ThinkToWake",
   "short_name": "ThinkToWake",
-  "description": "Brain-training alarm clock — solve puzzles to silence the alarm",
+  "description": "Brain-training alarm clock - solve puzzles to silence the alarm",
   "start_url": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#0e1a14",
-  "theme_color": "#6aab7e",
+  "background_color": "#f7f9fc",
+  "theme_color": "#3f72ff",
   "categories": ["productivity", "utilities", "games"],
   "icons": [
     {

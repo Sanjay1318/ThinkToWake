@@ -4,7 +4,7 @@
    This makes the app fully usable offline after first load.
    ================================================================ */
 
-const CACHE_NAME   = "thinktowake-v2";
+const CACHE_NAME   = "thinktowake-v3.3";
 const CACHE_ASSETS = [
   "./",
   "./index.html",

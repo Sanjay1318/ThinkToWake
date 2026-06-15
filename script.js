@@ -3,6 +3,7 @@
    ============================================================ */
 
 /* ==================== SETTINGS ==================== */
+const APP_VERSION = "3.3";
 const SETTINGS_KEY = "ttw_settings";
 
 const defaultSettings = {
@@ -13,17 +14,26 @@ const defaultSettings = {
   vibrateDefault: true,
   difficulty: "medium",
   timerSound: true,
-  theme: "forest"
+  notifications: false,
+  theme: "forest",
+  autoTheme: false
 };
 
 let appSettings = { ...defaultSettings };
+const colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
 
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
     if (saved) appSettings = { ...defaultSettings, ...saved };
   } catch { appSettings = { ...defaultSettings }; }
-  applyTheme(appSettings.theme);
+
+  if (appSettings.autoTheme) {
+    applyThemeFromSystem();
+    colorSchemeMedia.addEventListener("change", applyThemeFromSystem);
+  } else {
+    applyTheme(appSettings.theme);
+  }
 }
 
 function saveSettings() {
@@ -32,6 +42,10 @@ function saveSettings() {
 
 function applyTheme(theme) {
   document.body.dataset.theme = theme;
+}
+
+function applyThemeFromSystem() {
+  document.body.dataset.theme = colorSchemeMedia.matches ? "night" : "forest";
 }
 
 /* ==================== INITIALIZATION ==================== */
@@ -43,7 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSettingsUI();
   startAlarmChecker();
   // sync difficulty buttons with saved setting
-  document.querySelectorAll(".diff-btn").forEach(b => {
+  document.querySelectorAll(".challenge-btn").forEach(b => {
     b.classList.toggle("active", b.dataset.difficulty === appSettings.difficulty);
   });
   currentDifficulty = appSettings.difficulty;
@@ -53,7 +67,20 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── Register Service Worker (PWA offline support) ──────────────
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./service-worker.js")
-      .then(reg => console.log("SW registered, scope:", reg.scope))
+      .then(reg => {
+        console.log("SW registered, scope:", reg.scope);
+        if (reg.waiting) {
+          showToast("New version ready. Refresh to update.", "info", 5000);
+        }
+        reg.addEventListener("updatefound", () => {
+          const installing = reg.installing;
+          installing.addEventListener("statechange", () => {
+            if (installing.state === "installed" && navigator.serviceWorker.controller) {
+              showToast("Update ready. Reload to apply the newest version.", "info", 6000);
+            }
+          });
+        });
+      })
       .catch(err => console.warn("SW registration failed:", err));
   }
 });
@@ -67,6 +94,19 @@ function showToast(message, type = "info", duration = 3000) {
   toast.innerHTML = `<span class="toast-icon">${icons[type]}</span><span class="toast-message">${message}</span><button class="toast-close" onclick="this.parentElement.remove()">×</button>`;
   container.appendChild(toast);
   setTimeout(() => { toast.classList.add("hiding"); setTimeout(() => toast.remove(), 300); }, duration);
+}
+
+function sendNotification(title, body) {
+  if (!appSettings.notifications || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    new Notification(title, {
+      body,
+      icon: "assets/icons/icon-192.png"
+    });
+  } catch (e) {
+    console.warn("Notification failed", e);
+  }
 }
 
 /* ==================== ALARM DATA ==================== */
@@ -83,14 +123,65 @@ function generateId() { return Date.now() + Math.floor(Math.random() * 1000); }
 /* ==================== ALARM LIST ==================== */
 const DAY_LABELS = { mon:"Mon", tue:"Tue", wed:"Wed", thu:"Thu", fri:"Fri", sat:"Sat", sun:"Sun" };
 
+function getNextAlarmInfo(list = alarms) {
+  const activeAlarms = list.filter(a => a.active);
+  if (!activeAlarms.length) return null;
+
+  const now = new Date();
+  let soonest = null;
+  let soonestMins = Infinity;
+
+  activeAlarms.forEach(alarm => {
+    const [h, m] = alarm.time.split(":").map(Number);
+    let target = new Date();
+    target.setHours(h, m, 0, 0);
+    if (target <= now) target.setDate(target.getDate() + 1);
+
+    const mins = Math.max(0, Math.round((target - now) / 60000));
+    if (mins < soonestMins) {
+      soonestMins = mins;
+      soonest = alarm;
+    }
+  });
+
+  if (!soonest) return null;
+  const hours = Math.floor(soonestMins / 60);
+  const minutes = soonestMins % 60;
+  const inLabel = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  return { alarm: soonest, minutes: soonestMins, label: inLabel };
+}
+
+function updateAlarmOverview() {
+  const nextEl = document.getElementById("nextAlarmSummary");
+  const countEl = document.getElementById("activeAlarmCount");
+  if (!nextEl || !countEl) return;
+
+  const activeCount = alarms.filter(a => a.active).length;
+  const next = getNextAlarmInfo();
+  countEl.textContent = activeCount;
+  nextEl.textContent = next ? `${next.alarm.time} (${next.label})` : "None scheduled";
+}
+
 function renderAlarms() {
   const list  = document.getElementById("alarmList");
   const noMsg = document.getElementById("noAlarmsMsg");
+  updateAlarmOverview();
   if (!alarms.length) { list.innerHTML = ""; noMsg.classList.remove("hidden"); return; }
   noMsg.classList.add("hidden");
 
   const sorted = [...alarms].sort((a, b) => a.time.localeCompare(b.time));
-  list.innerHTML = sorted.map(alarm => {
+
+  // Next alarm badge
+  const activeAlarms = sorted.filter(a => a.active);
+  let badgeHtml = "";
+  if (activeAlarms.length) {
+    const next = getNextAlarmInfo(sorted);
+    if (next) {
+      badgeHtml = `<div class="next-alarm-badge">⏰ <strong>${next.alarm.name}</strong> rings in ${next.label}</div>`;
+    }
+  }
+
+  list.innerHTML = badgeHtml + sorted.map(alarm => {
     const repeatLabel = alarm.repeat === "once" ? "Once"
       : alarm.repeat === "everyday" ? "Every day"
       : (alarm.days || []).map(d => DAY_LABELS[d]).join(" · ");
@@ -101,8 +192,8 @@ function renderAlarms() {
           <div class="alarm-card-info">
             <p class="alarm-card-name">${alarm.name || "Alarm"}</p>
             <p class="alarm-card-time">${alarm.time}</p>
-            <p class="alarm-card-meta">${repeatLabel} · ${soundLabel}${alarm.vibrate ? " · 📳" : ""}</p>
-            ${alarm.reminder ? `<p class="alarm-card-reminder">📝 ${alarm.reminder}</p>` : ""}
+            <p class="alarm-card-meta">${repeatLabel} · ${soundLabel}${alarm.vibrate ? " · Vibrate" : ""}</p>
+            ${alarm.reminder ? `<p class="alarm-card-reminder">${alarm.reminder}</p>` : ""}
           </div>
           <label class="toggle-switch">
             <input type="checkbox" class="alarm-toggle" data-id="${alarm.id}" ${alarm.active ? "checked" : ""}>
@@ -110,8 +201,8 @@ function renderAlarms() {
           </label>
         </div>
         <div class="alarm-card-actions">
-          <button class="alarm-edit-btn" data-id="${alarm.id}">✏️ Edit</button>
-          <button class="alarm-delete-btn secondary" data-id="${alarm.id}">🗑️ Delete</button>
+          <button class="alarm-edit-btn secondary" data-id="${alarm.id}">Edit</button>
+          <button class="alarm-delete-btn secondary" data-id="${alarm.id}">Delete</button>
         </div>
       </div>`;
   }).join("");
@@ -132,6 +223,7 @@ function toggleAlarm(id) {
 
 function deleteAlarm(id) {
   const a = alarms.find(x => x.id === id); if (!a) return;
+  if (!confirm(`Delete "${a.name}"?`)) return;
   alarms = alarms.filter(x => x.id !== id); saveAlarms(); renderAlarms();
   showToast(`"${a.name}" deleted`, "info");
 }
@@ -148,6 +240,14 @@ document.getElementById("backToListBtn").addEventListener("click", showAlarmList
 document.getElementById("repeatOption").addEventListener("change", function () {
   document.getElementById("customDaysSection").classList.toggle("hidden", this.value !== "custom");
 });
+document.querySelectorAll(".repeat-preset-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const days = btn.dataset.days.split(",");
+    document.getElementById("repeatOption").value = "custom";
+    document.getElementById("customDaysSection").classList.remove("hidden");
+    document.querySelectorAll(".day-btn").forEach(b => b.classList.toggle("active", days.includes(b.dataset.day)));
+  });
+});
 document.getElementById("alarmSoundSelect").addEventListener("change", function () {
   document.getElementById("customSoundSection").classList.toggle("hidden", this.value !== "custom");
 });
@@ -159,6 +259,17 @@ document.getElementById("customSoundFile").addEventListener("change", function (
   const reader = new FileReader();
   reader.onload = e => { this.dataset.base64 = e.target.result; this.dataset.filename = file.name; };
   reader.readAsDataURL(file);
+});
+document.getElementById("alarmSoundPreviewBtn").addEventListener("click", () => {
+  const select = document.getElementById("alarmSoundSelect");
+  let src = select.value;
+  if (src === "custom") {
+    const cf = document.getElementById("customSoundFile");
+    src = cf.dataset.base64 || "";
+    if (!src) { showToast("Upload a custom sound to preview.", "warning"); return; }
+  }
+  const previewAudio = new Audio(src);
+  previewAudio.play().catch(() => showToast("Unable to play preview.", "error"));
 });
 
 function openAddForm() {
@@ -239,6 +350,34 @@ document.getElementById("saveAlarmBtn").addEventListener("click", () => {
   saveAlarms(); renderAlarms(); showAlarmList();
 });
 
+document.querySelectorAll(".quick-alarm-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const offset = parseInt(btn.dataset.offsetMinutes, 10);
+    if (!offset) return;
+
+    const target = new Date(Date.now() + offset * 60000);
+    const time = `${String(target.getHours()).padStart(2, "0")}:${String(target.getMinutes()).padStart(2, "0")}`;
+    const soundName = appSettings.customSoundName || appSettings.soundName || "Classic";
+    alarms.push({
+      id: generateId(),
+      name: `${offset}-minute alarm`,
+      time,
+      repeat: "once",
+      days: [],
+      reminder: "",
+      sound: appSettings.customSoundBase64 || appSettings.sound || "assets/alarm.mp3",
+      soundName,
+      customSoundBase64: appSettings.customSoundBase64 || "",
+      customSoundName: appSettings.customSoundName || "",
+      vibrate: appSettings.vibrateDefault,
+      active: true
+    });
+    saveAlarms();
+    renderAlarms();
+    showToast(`Quick alarm set for ${time}`, "success");
+  });
+});
+
 /* ==================== ALARM CHECKER ==================== */
 let alarmActive       = false;
 let currentAlarm      = null;
@@ -309,9 +448,9 @@ const difficultySettings = {
 };
 let currentDifficulty = "medium";
 
-document.querySelectorAll(".diff-btn").forEach(btn => {
+document.querySelectorAll(".challenge-btn").forEach(btn => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".diff-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".challenge-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     currentDifficulty = btn.dataset.difficulty;
     appSettings.difficulty = currentDifficulty;
@@ -349,6 +488,7 @@ async function triggerAlarm(alarm) {
   updateProgressDots();
   playAlarmSound(alarm);
   if (alarm.vibrate && navigator.vibrate) navigator.vibrate([500,200,500,200,500]);
+  sendNotification("Alarm ringing", `${alarm.name || "Alarm"} is ready to solve.`);
   await loadQuestion();
 }
 
@@ -450,7 +590,7 @@ function renderQuestion() {
   updateProgressIndicator();
   const s = difficultySettings[currentDifficulty];
   if (s.showCategory) {
-    const aiBadge = currentQuestion.source === "ai" ? `<span class="ai-badge">✨ AI</span>` : "";
+    const aiBadge = currentQuestion.source === "ai" ? `<span class="ai-badge">AI</span>` : "";
     categoryBadge.innerHTML = `<span class="category-badge ${currentQuestion.category}">${currentQuestion.category}</span>${aiBadge}`;
     categoryBadge.style.display = "inline-block";
   } else { categoryBadge.style.display = "none"; }
@@ -484,12 +624,12 @@ async function handleOptionClick(selected, btn) {
   if (selected === currentQuestion.answer) {
     correctAnswers++;
     btn.classList.add("correct-answer");
-    ft.className = "success"; ft.textContent = "Correct! 🎉";
+    ft.className = "success"; ft.textContent = "Correct!";
     document.querySelectorAll("#optionsBox button").forEach(b => b.disabled = true);
     setTimeout(async () => { currentQuestionIndex++; await loadQuestion(); }, 800);
   } else {
     btn.classList.add("wrong-answer");
-    ft.className = "error"; ft.textContent = "Wrong! Cooldown starting...";
+    ft.className = "error"; ft.textContent = "Incorrect — cooldown starting...";
     setTimeout(() => { btn.classList.remove("wrong-answer"); startLockTimer(); }, 400);
   }
 }
@@ -501,14 +641,14 @@ function startLockTimer() {
   ob.innerHTML = ""; ft.className = "locked";
   const ltd = document.createElement("div"); ltd.className = "lock-timer";
   ltd.textContent = `${remaining}s`;
-  ft.innerHTML = `Wrong answer! ⏳<br>`; ft.appendChild(ltd);
+  ft.innerHTML = `Incorrect answer.<br>`; ft.appendChild(ltd);
   lockInterval = setInterval(async () => {
     remaining--; ltd.textContent = `${remaining}s`;
     if (remaining <= 0) {
       clearInterval(lockInterval); isLocked = false;
       shuffleArray(currentQuestion.options);
       await loadQuestion(true);
-      ft.textContent = "Try again! 😈"; ft.className = "locked";
+      ft.textContent = "Try again!"; ft.className = "locked";
     }
   }, 1000);
 }
@@ -550,6 +690,11 @@ document.getElementById("startFocusBtn").addEventListener("click", () => {
   showToast("Timer ready — press Start when you're ready.", "info");
 });
 document.getElementById("dismissCompletionBtn").addEventListener("click", resetAlarmToList);
+document.getElementById("snoozeAlarmBtn").addEventListener("click", snoozeAlarm);
+document.getElementById("dismissAlarmBtn").addEventListener("click", () => {
+  stopAlarmSound();
+  resetAlarmToList();
+});
 
 function resetAlarmToList() {
   alarmActive = false; currentAlarm = null;
@@ -557,6 +702,20 @@ function resetAlarmToList() {
   alarmScreen.classList.add("hidden");
   alarmListScreen.classList.remove("hidden");
   renderAlarms();
+}
+
+function snoozeAlarm() {
+  if (!currentAlarm) return;
+  stopAlarmSound();
+  alarmActive = false;
+  const next = new Date(Date.now() + 5 * 60_000);
+  const nextTime = `${String(next.getHours()).padStart(2, "0")}:${String(next.getMinutes()).padStart(2, "0")}`;
+  currentAlarm.time = nextTime;
+  currentAlarm.active = true;
+  saveAlarms();
+  renderAlarms();
+  showToast("Alarm snoozed for 5 minutes", "info");
+  resetAlarmToList();
 }
 
 /* ==================== NAVIGATION ==================== */
@@ -651,6 +810,31 @@ function updateDashboard() {
 
   renderWeekChart();
   renderHistoryList();
+  renderWakeScore(stats, streak);
+}
+
+function renderWakeScore(stats, streak) {
+  const scoreEl = document.getElementById("wakeScore");
+  const labelEl = document.getElementById("wakeScoreLabel");
+  if (!scoreEl || !labelEl) return;
+
+  if (!stats.totalAlarms) {
+    scoreEl.textContent = "--";
+    labelEl.textContent = "Solve an alarm to calculate it";
+    return;
+  }
+
+  const accuracyPoints = Math.min(40, Math.round(stats.avgAccuracy * 0.4));
+  const speedPoints = Math.max(0, 30 - Math.floor(stats.avgSolveTime / 5));
+  const streakPoints = Math.min(30, streak.currentStreak * 5);
+  const score = Math.min(100, accuracyPoints + speedPoints + streakPoints);
+
+  scoreEl.textContent = score;
+  labelEl.textContent =
+    score >= 85 ? "Sharp mornings lately" :
+    score >= 65 ? "Solid wake-up rhythm" :
+    score >= 40 ? "Building consistency" :
+    "Start with one solved alarm";
 }
 
 function renderWeekChart() {
@@ -742,8 +926,34 @@ function initSettingsUI() {
   sd.value = appSettings.difficulty;
   sd.addEventListener("change", () => {
     appSettings.difficulty = sd.value; currentDifficulty = sd.value;
-    document.querySelectorAll(".diff-btn").forEach(b => b.classList.toggle("active", b.dataset.difficulty === sd.value));
+    document.querySelectorAll(".challenge-btn").forEach(b => b.classList.toggle("active", b.dataset.difficulty === sd.value));
     saveSettings();
+  });
+  // Notifications
+  const ns = document.getElementById("settingsNotifications");
+  ns.checked = appSettings.notifications;
+  ns.addEventListener("change", () => {
+    appSettings.notifications = ns.checked;
+    if (ns.checked && "Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission().then(permission => {
+        if (permission !== "granted") {
+          ns.checked = false;
+          appSettings.notifications = false;
+          showToast("Notifications not enabled.", "warning");
+        }
+        saveSettings();
+      });
+    } else {
+      saveSettings();
+    }
+  });
+  // Auto theme
+  const at = document.getElementById("settingsAutoTheme");
+  at.checked = appSettings.autoTheme;
+  at.addEventListener("change", () => {
+    appSettings.autoTheme = at.checked;
+    saveSettings();
+    if (at.checked) applyThemeFromSystem(); else applyTheme(appSettings.theme);
   });
   // Timer sound
   const ts = document.getElementById("settingsTimerSound");
@@ -756,7 +966,11 @@ function initSettingsUI() {
       document.querySelectorAll(".theme-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       appSettings.theme = btn.dataset.theme;
-      applyTheme(btn.dataset.theme);
+      if (appSettings.autoTheme) {
+        applyThemeFromSystem();
+      } else {
+        applyTheme(btn.dataset.theme);
+      }
       saveSettings();
       showToast(`Theme: ${btn.title}`, "info");
     });
@@ -766,13 +980,100 @@ function initSettingsUI() {
     localStorage.removeItem(ALARM_HISTORY_KEY);
     showToast("History cleared", "info");
   });
+  // Delete all alarms
+  document.getElementById("deleteAlarmsBtn").addEventListener("click", () => {
+    if (!confirm("Delete all alarms? This cannot be undone.")) return;
+    alarms = [];
+    saveAlarms();
+    renderAlarms();
+    showToast("All alarms deleted", "warning");
+  });
+  // Reset defaults
+  document.getElementById("resetDefaultsBtn").addEventListener("click", () => {
+    if (!confirm("Reset all settings to defaults?")) return;
+    appSettings = { ...defaultSettings };
+    saveSettings();
+    loadSettings();
+    syncSettingsUI();
+    renderAlarms();
+    showToast("Settings reset to defaults", "info");
+  });
   // Reset streak
   document.getElementById("resetStreakBtn").addEventListener("click", () => {
+    if (!confirm("Reset your current day streak?")) return;
     localStorage.removeItem(STREAK_KEY);
+    // Update UI if user is currently on dashboard
+    if (!document.getElementById("dashboardScreen").classList.contains("hidden")) {
+      updateDashboard();
+    }
     showToast("Streak reset", "info");
   });
+
+  // Data export/import
+  document.getElementById("exportDataBtn").addEventListener("click", exportAppData);
+  document.getElementById("importDataBtn").addEventListener("click", () => {
+    document.getElementById("importDataFile").click();
+  });
+  document.getElementById("importDataFile").addEventListener("change", importAppData);
   // Default sound name
   document.getElementById("defaultSoundName").textContent = appSettings.soundName || "Classic";
+}
+
+function exportAppData() {
+  const data = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    alarms,
+    settings: appSettings,
+    alarmHistory: getAlarmHistory(),
+    streak: getStreakData(),
+    mathSprintBest: localStorage.getItem("mathSprintBest") || "0"
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `thinktowake-backup-${stamp}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("Backup exported", "success");
+}
+
+function importAppData(event) {
+  const file = event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data || !Array.isArray(data.alarms) || typeof data.settings !== "object") {
+        throw new Error("Invalid backup");
+      }
+      if (!confirm("Import this backup? Current local alarms and settings will be replaced.")) return;
+
+      alarms = data.alarms;
+      appSettings = { ...defaultSettings, ...data.settings };
+      localStorage.setItem(ALARMS_KEY, JSON.stringify(alarms));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings));
+      localStorage.setItem(ALARM_HISTORY_KEY, JSON.stringify(Array.isArray(data.alarmHistory) ? data.alarmHistory : []));
+      localStorage.setItem(STREAK_KEY, JSON.stringify(data.streak || { currentStreak: 0, lastActiveDate: null }));
+      localStorage.setItem("mathSprintBest", String(data.mathSprintBest || "0"));
+
+      if (appSettings.autoTheme) applyThemeFromSystem(); else applyTheme(appSettings.theme);
+      renderAlarms();
+      syncSettingsUI();
+      document.getElementById("sprintBest").textContent = parseInt(localStorage.getItem("mathSprintBest")) || 0;
+      showToast("Backup imported", "success");
+    } catch {
+      showToast("That backup file could not be imported.", "error");
+    }
+  };
+  reader.readAsText(file);
 }
 
 function syncSettingsUI() {
@@ -781,6 +1082,8 @@ function syncSettingsUI() {
   document.getElementById("settingsVibrateDefault").checked = appSettings.vibrateDefault;
   document.getElementById("settingsDifficultySelect").value = appSettings.difficulty;
   document.getElementById("settingsTimerSound").checked = appSettings.timerSound;
+  document.getElementById("settingsNotifications").checked = appSettings.notifications;
+  document.getElementById("settingsAutoTheme").checked = appSettings.autoTheme;
   document.querySelectorAll(".theme-btn").forEach(b => b.classList.toggle("active", b.dataset.theme === appSettings.theme));
   document.getElementById("defaultSoundName").textContent = appSettings.soundName || "Classic";
 }
@@ -929,7 +1232,8 @@ function timerTick() {
     }
     timerDisplay.textContent = "Done!"; timerLabel.textContent = "timer complete";
     setRingProgress(0);
-    showToast("⏰ Timer complete! Tap Cancel to stop.", "success", 6000);
+    sendNotification("Timer complete", "Your countdown has finished.");
+    showToast("Timer complete. Tap Cancel to stop.", "success", 6000);
   }
 }
 
@@ -955,7 +1259,7 @@ function playTimerBeep() {
 function resetTimerUI() {
   timerRunning = false; timerPaused = false;
   startTimerBtn.textContent = "Start"; startTimerBtn.disabled = false;
-  pauseTimerBtn.classList.add("hidden"); pauseTimerBtn.textContent = "⏸";
+  pauseTimerBtn.classList.add("hidden"); pauseTimerBtn.textContent = "Pause";
   document.getElementById("timerPicker").classList.remove("hidden");
 }
 
@@ -979,10 +1283,10 @@ startTimerBtn.addEventListener("click", () => {
 
 pauseTimerBtn.addEventListener("click", () => {
   if (timerPaused) {
-    timerPaused = false; pauseTimerBtn.textContent = "⏸";
+    timerPaused = false; pauseTimerBtn.textContent = "Pause";
     timerInterval = setInterval(timerTick, 1000);
   } else {
-    timerPaused = true; pauseTimerBtn.textContent = "▶";
+    timerPaused = true; pauseTimerBtn.textContent = "Resume";
     clearInterval(timerInterval);
   }
 });
@@ -1030,7 +1334,11 @@ function startSprint() {
   document.getElementById("mathSprintOver").classList.add("hidden");
   generateProblem();
   sprintInterval = setInterval(() => {
-    sprintTime--; document.getElementById("sprintTime").textContent = sprintTime;
+    sprintTime--;
+    document.getElementById("sprintTime").textContent = sprintTime;
+    // Add urgency visual when ≤10 seconds
+    const timeEl = document.getElementById("sprintTime").closest(".sprint-stat") || document.getElementById("sprintTime").parentElement;
+    if (timeEl) timeEl.classList.toggle("urgent", sprintTime <= 10);
     if (sprintTime <= 0) endSprint();
   }, 1000);
 }
@@ -1067,3 +1375,112 @@ document.getElementById("startSprintBtn").addEventListener("click", startSprint)
 document.getElementById("playAgainBtn").addEventListener("click",  startSprint);
 document.getElementById("submitAnswerBtn").addEventListener("click", checkAnswer);
 document.getElementById("mathAnswer").addEventListener("keypress", e => { if (e.key==="Enter") checkAnswer(); });
+
+/* ==================== KEYBOARD SHORTCUTS ==================== */
+function getVisibleScreenName() {
+  for (const [name, el] of Object.entries(screens)) {
+    if (el && !el.classList.contains("hidden")) return name;
+  }
+  return null;
+}
+
+function focusOptionByIndex(idx) {
+  const options = Array.from(document.querySelectorAll("#optionsBox button"));
+  const btn = options[idx];
+  if (!btn) return false;
+  btn.focus();
+  return true;
+}
+
+function getSelectedOptionFromFocus() {
+  const focused = document.activeElement;
+  const buttons = Array.from(document.querySelectorAll("#optionsBox button"));
+  if (buttons.includes(focused)) return focused.textContent;
+  return null;
+}
+
+function isTypingInField() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName ? el.tagName.toLowerCase() : "";
+  return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
+}
+
+document.addEventListener("keydown", (e) => {
+  // Avoid stealing keys while user is typing (except when we're on an alarm screen)
+  const screen = getVisibleScreenName();
+  const allowWhenTyping = screen === "alarm" && !isLocked;
+  if (!allowWhenTyping && isTypingInField()) return;
+
+  // Alarm ringing screen shortcuts
+  if (screen === "alarm" && alarmActive) {
+    // Prevent browser defaults (e.g., number keys triggering something odd)
+    if (["1","2","3","4"].includes(e.key) || e.key === "Enter" || e.key === "Escape") e.preventDefault();
+
+    if (["1","2","3","4"].includes(e.key)) {
+      const idx = parseInt(e.key, 10) - 1;
+      focusOptionByIndex(idx);
+      return;
+    }
+
+    if (e.key === "Enter") {
+      const selected = getSelectedOptionFromFocus();
+      const btn = document.activeElement && document.activeElement.tagName === "BUTTON" ? document.activeElement : null;
+      if (selected && btn) {
+        btn.click();
+      }
+      return;
+    }
+
+    if (e.key === "Escape") {
+      // Shift+Esc: dismiss, otherwise snooze
+      if (e.shiftKey) {
+        document.getElementById("dismissAlarmBtn").click();
+      } else {
+        document.getElementById("snoozeAlarmBtn").click();
+      }
+      return;
+    }
+  }
+
+  // Timer shortcuts
+  if (screen === "timer") {
+    // Space toggles pause/resume while running
+    if (e.code === "Space" && timerRunning) {
+      e.preventDefault();
+      pauseTimerBtn.click();
+      return;
+    }
+    // Enter starts when picker is visible
+    if (e.key === "Enter" && !timerRunning) {
+      const pickerHidden = document.getElementById("timerPicker").classList.contains("hidden");
+      if (!pickerHidden) {
+        e.preventDefault();
+        startTimerBtn.click();
+      }
+      return;
+    }
+  }
+
+  // Math Sprint shortcuts
+  if (screen === "mathSprint") {
+    // Space starts/plays again on the start screen
+    if (e.code === "Space" && !document.getElementById("mathSprintGame").classList.contains("hidden")) {
+      // game is active: treat Space as submit (browser may scroll otherwise)
+      e.preventDefault();
+      checkAnswer();
+      return;
+    }
+    if (e.code === "Space" && document.getElementById("mathSprintStart") && !document.getElementById("mathSprintStart").classList.contains("hidden")) {
+      e.preventDefault();
+      startSprint();
+      return;
+    }
+    if (e.key === "Enter" && !document.getElementById("mathSprintGame").classList.contains("hidden")) {
+      e.preventDefault();
+      checkAnswer();
+      return;
+    }
+  }
+});
+
